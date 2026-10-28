@@ -64,7 +64,9 @@ ProgressFn = Callable[[Job, int, int], None]
 
 def _bext_for(job: Job, prep: Prepared) -> BextInfo:
     tc = prep.timecode
-    desc = (f"{Path(job.path).name} | {prep.sequence.name} | L={prep.left.label} R={prep.right.label} | "
+    left = prep.left.channel_label(prep.left_channel)
+    right = prep.right.channel_label(prep.right_channel)
+    desc = (f"{Path(job.path).name} | {prep.sequence.name} | L={left} R={right} | "
             f"TC {tc.label} {tc.rate.label}")
     formats = sorted({(p.media.fmt.bits, p.media.fmt.sample_rate) for plan in prep.plans for p in plan.segments})
     history = [f"A=PCM,F={rate},W={bits},M=mono,T=AAF essence" for bits, rate in formats]
@@ -107,7 +109,7 @@ def export_job(job: Job, settings: BatchSettings, index: MediaIndex, claimed: se
     job.messages = []
     log.info("export start file=%s sequence=%r tc=%s edit_rate=%s left=%s right=%s output=%s "
              "time_reference=%d samples=%d", job.filename, prep.sequence.name, prep.timecode.display,
-             prep.sequence.edit_rate, prep.left.label, prep.right.label, dest.name,
+             prep.sequence.edit_rate, job.left_label, job.right_label, dest.name,
              prep.time_reference, prep.frames)
     for line in job.diagnostics:
         log.debug("  %s", line)
@@ -214,7 +216,7 @@ def run_batch(jobs: list[Job], settings: BatchSettings, cancel: threading.Event 
 
 
 REPORT_COLUMNS = [
-    "Input AAF", "Sequence", "Left track", "Right track", "Record timecode", "Timecode rate",
+    "Input AAF", "Sequence", "Track selection", "Left track", "Right track", "Record timecode", "Timecode rate",
     "Timecode source", "Exported file", "Duration", "Duration (samples)", "Sample rate", "Bit depth",
     "BWF TimeReference", "Result", "Message", "Warnings",
 ]
@@ -229,8 +231,9 @@ def report_rows(result: BatchResult) -> list[dict]:
         rows.append({
             "Input AAF": job.filename,
             "Sequence": seq.name if seq else "",
-            "Left track": job.left_track.label if job.left_track else "",
-            "Right track": job.right_track.label if job.right_track else "",
+            "Track selection": job.selection,
+            "Left track": job.left_label,
+            "Right track": job.right_label,
             "Record timecode": tc.label if tc else "",
             "Timecode rate": tc.rate.label if tc else "",
             "Timecode source": ("manual override" if tc.manual else tc.source) if tc else "",

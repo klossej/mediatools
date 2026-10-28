@@ -1,10 +1,10 @@
 # AAF Audio Extractor
 
 A small Windows utility for audio post-production. It opens AAF files exported
-from Avid Media Composer, takes two audio tracks of premixed audio (for example
-A1 and A2), and writes them as one **stereo 48 kHz / 24-bit Broadcast WAV** file
-placed at the sequence's **record start timecode**. Many AAFs can be processed
-as one batch, e.g. a whole series of episodes.
+from Avid Media Composer, takes premixed audio (a stereo track such as A31, or
+two mono tracks such as A1 + A2), and writes it as one **stereo 48 kHz / 24-bit
+Broadcast WAV** file placed at the sequence's **record start timecode**. Many
+AAFs can be processed as one batch, e.g. a whole series of episodes.
 
 Version 0.1.0. It does one job: no editing, mixing or effect rendering.
 
@@ -14,7 +14,14 @@ Version 0.1.0. It does one job: no editing, mixing or effect rendering.
 
 1. Double-click **`AAF Audio Extractor.exe`** (in `dist\AAF Audio Extractor\`).
 2. Drag the AAF files, or the folder that holds them, into the window.
-3. Click a file. In **Tracks**, choose the **Left channel** and **Right channel** tracks.
+
+**Stereo mix that may sit on different tracks:** tick **Auto-detect stereo mix
+track in every file**, choose the output folder and click **Export All**. That's
+it. Otherwise, set the tracks by hand:
+
+3. Click a file. In **Tracks**, choose the **Left channel** and **Right channel**.
+   For a stereo track, pick `A31 ch1 (stereo L)` as Left; Right is set to
+   `A31 ch2 (stereo R)` automatically.
 4. Click **Apply to All Files**. Every file is checked, and the Status column shows
    `Ready` or explains what needs attention.
 5. Choose the **Output folder** and click **Export All**.
@@ -70,8 +77,10 @@ To develop on another OS: `python3.12 -m venv .venv`, then
 
 ### Timecode
 
-* The record start comes from the sequence's own timecode track (TC1), never from
-  source clip timecode.
+* The record start comes from the sequence's own timecode track, never from
+  source clip timecode. If the sequence has several timecode tracks that
+  disagree (Avid can add, for example, a 24 fps TC2), TC1 is used and the others
+  are listed in the warnings. If there is no TC1, the file needs attention.
 * Positions are converted with exact rational arithmetic (`fractions.Fraction`),
   so nothing accumulates floating-point error.
 * `TimeReference = round(frames_since_midnight × 48000 / real_frame_rate)`. For
@@ -129,6 +138,16 @@ Supported:
 
 * One or several consecutive SourceClips per track, Filler gaps, and non-zero
   source offsets.
+* Avid stereo (multichannel) tracks, stored as an `Audio Channel Combiner` over a
+  master clip with one mono source per channel. Each channel can be mapped to
+  Left or Right on its own (`A31 ch1`, `A31 ch2`).
+* Auto-detection of the mix (optional). Per file, the app picks the usable
+  stereo track whose audio spans at least 90% of the sequence. If several
+  qualify, the one whose clip or track name contains "MIX" wins. If it is still
+  ambiguous, or nothing qualifies, the file is marked *Needs attention* with the
+  candidates listed. The app never guesses.
+* Avid's 4 KiB padding of embedded essence streams: nothing past the declared
+  media length is ever read.
 * Tracks with a frame edit rate or an audio-rate edit rate.
 * Embedded PCM essence (PCMDescriptor, WAVEDescriptor, AIFCDescriptor).
 * Linked WAV/AIFF files, and linked MXF OP-Atom PCM files that are matched by
@@ -149,10 +168,12 @@ rest of the batch continues:
 
 ## Known limitations
 
-* **Avid interoperability has not yet been verified against real Media Composer
-  exports.** The tests use synthetic AAFs built with pyaaf2 that follow the Avid
-  structure. Before production use, run the acceptance procedure in
-  [docs/TESTING.md](docs/TESTING.md) on a real AAF.
+* **Verified on one real Media Composer export** (Love Island S5, LI_510.aaf:
+  embedded audio, stereo mix on A31, 25 fps). The exported WAV is bit-identical to
+  the AAF's embedded essence across all clips, and the length and TimeReference
+  are correct (see [docs/TESTING.md](docs/TESTING.md)). Placement in Pro Tools,
+  and a comparison against an Avid- or Pro Tools-rendered reference, still need to
+  be checked by an operator.
 * MXF OP-Atom reading is tested on synthetic KLV files only. Matching by UMID
   relies on pyaaf2's MXF header parser.
 * Output files are limited to 4 GiB (about 4 h 8 min of 48 kHz / 24-bit stereo).

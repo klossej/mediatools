@@ -35,6 +35,8 @@ against the exact samples placed in the fixture.
 | 13 | Batch with successes and failures | `test_batch::test_batch_with_success_and_failures`, `test_failure_during_render_does_not_stop_batch` |
 | 14 | Batch cancellation | `test_batch::test_cancellation_mid_render` |
 | 15 | Output filename collisions | `test_preflight::test_output_filename_collisions`, `test_case_insensitive_collision`, `test_batch::test_collision_does_not_block_other_files` |
+| — | Avid stereo track (Channel Combiner), channel mapping, padding | `test_stereo::*` |
+| — | Auto-detect stereo mix (coverage, MIX tie-break, ambiguity, mix on different tracks per episode) | `test_detect::*`, `test_gui::test_auto_detect_checkbox_exports_mix_from_any_track` |
 | 16 | Long-file streaming / RAM | `test_streaming::test_ninety_minute_render_memory_is_bounded` (90 min, peak < 48 MB), `test_ten_minute_embedded_export_end_to_end` |
 
 Also covered:
@@ -48,6 +50,33 @@ Also covered:
 * Overwrite, skip and rename policies, retrying without re-rendering, and the CSV
   report contents.
 * An offscreen GUI end-to-end export.
+
+## Validation against a real Media Composer export
+
+**LI_510.aaf** (Love Island S5, 4.6 GB, embedded audio, 25 fps, 32 audio tracks),
+checked on 2026-10-28:
+
+* Structure found: the stereo mix is on A31 as three `Audio Channel Combiner`
+  clips (main mix, a 1,935-frame insert, main mix again). Each channel is a
+  separate mono 48 kHz / 24-bit embedded PCM source. A32 is empty. TC1 is
+  00:00:00:00 at 25 fps; TC2 is an extra 24 fps timecode track.
+* Avid pads every embedded essence stream to 4 KiB. The padding is excluded.
+* The export of A31 ch1 → L and ch2 → R took about 15 s for 71:33.68
+  (206,096,640 samples per channel). An independent script compared the WAV data
+  byte-for-byte with the six embedded essence streams read directly through
+  pyaaf2: **0 differing samples**. Both lengths equal the sequence duration, and
+  TimeReference = 0 (00:00:00:00).
+* Other tracks are correctly refused: clip gain of −10 dB and others, pan
+  automation, crossfades, AudioSuite and track effects, and a nested sequence.
+  The master fader carries a Maxim limiter. It is not part of A31 and is not
+  applied, so the export is the mix file exactly as it was delivered to the
+  editor.
+
+Auto-detect on this file picks A31 (stereo, audio over 100% of the sequence).
+The other stereo tracks (A20, A22, A27: music and SFX) are excluded because they
+carry gain changes.
+
+`tests/test_stereo.py` reproduces this structure synthetically.
 
 ## What synthetic tests cannot prove
 

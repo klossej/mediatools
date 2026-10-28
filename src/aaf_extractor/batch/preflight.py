@@ -17,7 +17,12 @@ from ..media.resolver import MediaError, MediaIndex, ResolvedMedia, resolve
 from ..timecode import timecode_to_time_reference
 from .models import (OUTPUT_SAMPLE_RATE, BatchSettings, Job, JobState, MatchMethod,
                      OverwritePolicy, TrackSelector)
+from .detect import DetectionError, detect_mix_track
 from .naming import output_name
+
+SELECTION_OVERRIDE = "per-file override"
+SELECTION_AUTO = "auto-detected"
+SELECTION_MAPPING = "batch mapping"
 
 log = logging.getLogger(__name__)
 
@@ -33,14 +38,18 @@ class Prepared:
     sequence: SequenceInfo
     left: AudioTrack
     right: AudioTrack
+    left_channel: int
+    right_channel: int
+    selection: str
+    selection_note: str | None
     plans: list[ChannelPlan]
     frames: int
     timecode: RecordTimecode
     time_reference: int
 
 
-def match_track(seq: SequenceInfo, selector: TrackSelector) -> AudioTrack:
-    """Find exactly one track for ``selector`` or raise PreflightIssue."""
+def match_track(seq: SequenceInfo, selector: TrackSelector) -> tuple[AudioTrack, int]:
+    """Find exactly one (track, channel) for ``selector`` or raise PreflightIssue."""
     if selector.method == MatchMethod.NUMBER:
         hits = [t for t in seq.tracks if t.track_number == int(selector.value)]
     else:
@@ -51,16 +60,37 @@ def match_track(seq: SequenceInfo, selector: TrackSelector) -> AudioTrack:
     if len(hits) > 1:
         raise PreflightIssue(JobState.NEEDS_ATTENTION,
                              f"track {selector.label} is ambiguous ({len(hits)} tracks match)")
-    return hits[0]
+    track = hits[0]
+    if selector.channel is None:
+        if track.channels > 1:
+            raise PreflightIssue(JobState.NEEDS_ATTENTION,
+                                 f"track {track.label} is {track.channels}-channel in this file; choose a channel")
+        return track, 0
+    if selector.channel >= track.channels:
+        what = "mono" if track.channels == 1 else f"{track.channels}-channel"
+        raise PreflightIssue(JobState.NEEDS_ATTENTION,
+                             f"{selector.label} not found: {track.label} is {what} in this file")
+    return track, selector.channel
 
 
-def _pick(job: Job, seq: SequenceInfo, side: str, settings: BatchSettings) -> AudioTrack:
-    slot = job.override_left if side == "left" else job.override_right
-    if slot is not None:
-        track = seq.track_by_slot(slot)
-        if track is None:
+def _detect(seq: SequenceInfo):
+    try:
+        return detect_mix_track(seq)
+    except DetectionError as exc:
+        raise PreflightIssue(JobState.NEEDS_ATTENTION, f"auto-detect: {exc}")
+
+
+def _pick(job: Job, seq: SequenceInfo, side: str, settings: BatchSettings,
+          detection=None) -> tuple[AudioTrack, int]:
+    ref = job.override_left if side == "left" else job.override_right
+    if ref is not None:
+        track = seq.track_by_slot(ref.slot_id)
+        if track is None or ref.channel >= track.channels:
             raise PreflightIssue(JobState.NEEDS_ATTENTION, f"override {side} track no longer exists")
-        return track
+        return track, ref.channel
+    if settings.auto_mix:
+        detection = detection or _detect(seq)
+        return detection.track, 0 if side == "left" else 1
     selector = settings.left if side == "left" else settings.right
     if selector is None:
         raise PreflightIssue(JobState.NEEDS_ATTENTION, f"no {side} track selected")
@@ -99,8 +129,17 @@ def prepare(job: Job, settings: BatchSettings, index: MediaIndex) -> Prepared:
     if tc is None:
         raise PreflightIssue(JobState.NEEDS_ATTENTION,
                              f"record timecode unavailable ({seq.timecode_problem}); set it manually")
-    left = _pick(job, seq, "left", settings)
-    right = _pick(job, seq, "right", settings)
+    detection = None
+    if settings.auto_mix and (job.override_left is None or job.override_right is None):
+        detection = _detect(seq)
+    left, left_ch = _pick(job, seq, "left", settings, detection)
+    right, right_ch = _pick(job, seq, "right", settings, detection)
+    if job.has_override:
+        selection, note = SELECTION_OVERRIDE, None
+    elif detection is not None:
+        selection, note = SELECTION_AUTO, detection.note
+    else:
+        selection, note = SELECTION_MAPPING, None
     for side, track in (("left", left), ("right", right)):
         if track.errors:
             raise PreflightIssue(JobState.UNSUPPORTED, f"{side} track {track.label}: {track.errors[0]}")
@@ -109,15 +148,15 @@ def prepare(job: Job, settings: BatchSettings, index: MediaIndex) -> Prepared:
     if frames <= 0:
         raise PreflightIssue(JobState.UNSUPPORTED, "sequence has zero duration")
     plans = []
-    for side, track in (("left", left), ("right", right)):
+    for side, track, ch in (("left", left, left_ch), ("right", right, right_ch)):
         try:
-            plans.append(plan_track(track, resolved, OUTPUT_SAMPLE_RATE, frames))
+            plans.append(plan_track(track, resolved, OUTPUT_SAMPLE_RATE, frames, ch))
         except PlanError as exc:
-            raise PreflightIssue(JobState.UNSUPPORTED, f"{side} track {track.label}: {exc}")
+            raise PreflightIssue(JobState.UNSUPPORTED, f"{side} track {track.channel_label(ch)}: {exc}")
     if not any(p.segments for p in plans):
         raise PreflightIssue(JobState.NEEDS_ATTENTION, "both selected tracks are empty (silence only)")
     tref = timecode_to_time_reference(tc.start_frames, tc.rate, OUTPUT_SAMPLE_RATE)
-    return Prepared(seq, left, right, plans, frames, tc, tref)
+    return Prepared(seq, left, right, left_ch, right_ch, selection, note, plans, frames, tc, tref)
 
 
 def diagnostics_for(job: Job, prep: Prepared) -> list[str]:
@@ -128,11 +167,15 @@ def diagnostics_for(job: Job, prep: Prepared) -> list[str]:
         f"Sequence edit rate: {seq.edit_rate}  duration: {seq.duration_label} ({prep.frames} samples @ {OUTPUT_SAMPLE_RATE})",
         f"Record start: {prep.timecode.display} (frame {prep.timecode.start_frames}) from {prep.timecode.source}",
         f"BWF TimeReference: {prep.time_reference}",
+        f"Track selection: {prep.selection}" + (f" - {prep.selection_note}" if prep.selection_note else ""),
     ]
-    for side, track, plan in (("Left", prep.left, prep.plans[0]), ("Right", prep.right, prep.plans[1])):
-        lines.append(f"{side}: {track.label} (slot {track.slot_id}, edit rate {track.edit_rate}, "
-                     f"{len(track.segments)} components)")
+    for side, track, ch, plan in (("Left", prep.left, prep.left_channel, prep.plans[0]),
+                                  ("Right", prep.right, prep.right_channel, prep.plans[1])):
+        lines.append(f"{side}: {track.channel_label(ch)} (slot {track.slot_id}, channel {ch + 1} of "
+                     f"{track.channels}, edit rate {track.edit_rate}, {len(track.segments)} components)")
         for seg in track.segments:
+            if seg.channel != ch:
+                continue
             media = f" media={seg.media.mob_id} src_start={seg.source_start}s" if seg.media else ""
             lines.append(f"    record {seg.record_start}+{seg.length} units: {seg.kind} {seg.description}{media}")
         lines.extend("    " + l for l in plan.describe())
@@ -154,6 +197,8 @@ def preflight(jobs: list[Job], settings: BatchSettings, index: MediaIndex | None
             continue
         job.messages, job.warnings, job.diagnostics = [], [], []
         job.left_track = job.right_track = None
+        job.left_channel = job.right_channel = 0
+        job.selection = ""
         job.output_path = None
         try:
             prep = prepare(job, settings, index)
@@ -164,19 +209,25 @@ def preflight(jobs: list[Job], settings: BatchSettings, index: MediaIndex | None
             if seq is not None and issue.state != JobState.PENDING:
                 for side in ("left", "right"):
                     try:
-                        setattr(job, f"{side}_track", _pick(job, seq, side, settings))
+                        track, ch = _pick(job, seq, side, settings)
+                        setattr(job, f"{side}_track", track)
+                        setattr(job, f"{side}_channel", ch)
                     except PreflightIssue:
                         pass
             log.info("preflight %s: %s - %s", job.filename, issue.state.value, issue)
         else:
             job.left_track, job.right_track = prep.left, prep.right
+            job.left_channel, job.right_channel = prep.left_channel, prep.right_channel
+            job.selection = prep.selection
+            if prep.selection_note:
+                job.warnings.append(prep.selection_note)
             job.time_reference = prep.time_reference
             job.diagnostics = diagnostics_for(job, prep)
             job.warnings.extend(prep.sequence.warnings)
             job.warnings.extend(w for t in {id(prep.left): prep.left, id(prep.right): prep.right}.values()
                                 for w in t.warnings)
             job.warnings.extend(w for p in prep.plans for w in p.warnings)
-            if prep.left is prep.right:
+            if prep.left is prep.right and prep.left_channel == prep.right_channel:
                 job.warnings.append("the same track is used for both channels")
             if prep.timecode.manual:
                 job.warnings.append(f"record timecode set manually: {prep.timecode.display}")

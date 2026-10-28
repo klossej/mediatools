@@ -38,6 +38,41 @@ When the batch finishes, a summary shows the totals, the elapsed time and the
 output folder. `AAF_Export_Report_<date>_<time>.csv` is written to the output
 folder.
 
+## Auto-detect the stereo mix (recommended when the mix track moves)
+
+Tick **Auto-detect stereo mix track in every file**. Each AAF is then searched
+for its mix:
+
+* a stereo track the app can extract faithfully (no effects, gain changes or
+  fades on it);
+* with audio over at least 90% of the sequence, which rules out stereo music or
+  effects beds;
+* if several tracks qualify, the one whose clip or track name contains "MIX".
+
+Channel 1 goes to Left and channel 2 to Right. The Left/Right columns show, for
+example, `A31 ch1 (auto)`. The CSV report has a "Track selection" column, and
+the reason for each choice is in the row tooltip and in the diagnostic report.
+
+If a file has no such track, or several equally likely ones, it is marked
+*Needs attention* with the candidates named. Pick its tracks by hand and click
+**This File Only**; a per-file choice always wins over auto-detect.
+
+Workflow for a series: add the 32 AAFs, tick auto-detect, set the output folder,
+click **Export All**.
+
+## Stereo tracks (e.g. a stereo mix on A31)
+
+An Avid stereo track appears once in the track table, with "stereo" in its
+format, and twice in the Left/Right lists: `A31 ch1 (stereo L)` and
+`A31 ch2 (stereo R)`. Choosing ch1 as Left sets Right to ch2 automatically. Then
+click **Apply to All Files**. The batch mapping becomes "Left A31 ch1 · Right A31
+ch2" and is applied to every episode.
+
+If, in some episode, that track is mono or has a different layout, the file is
+marked *Needs attention* rather than exported with the wrong channel. An empty
+track (for example A32 when the mix is on A31) is also reported, never exported
+as silence.
+
 ## Per-file adjustments
 
 * **This File Only**: choose different left/right tracks for the selected file

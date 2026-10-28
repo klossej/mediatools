@@ -28,6 +28,7 @@ class Media:
     external_path: Path | None = None
     mob_edit_rate: Fraction | int | None = None  # edit rate of master/file slots (default: sample rate)
     channel: int = 1               # PhysicalTrackNumber on the file slot for multichannel media
+    split: bool = False            # Avid style: (n, ch) samples become ch mono source mobs in one master clip
 
 
 @dataclass
@@ -35,6 +36,16 @@ class Clip:
     media: str
     src_start: int                 # in master-slot edit units
     length: int                    # in composition track edit units
+    slot: int = 1                  # master clip slot (channel) referenced
+
+
+@dataclass
+class Combine:
+    """Avid stereo track clip: an Audio Channel Combiner over master slots 1..channels."""
+    media: str
+    src_start: int
+    length: int
+    channels: int = 2
 
 
 @dataclass
@@ -121,8 +132,31 @@ def _set(obj, key, value):
     obj[key].value = value
 
 
+def _make_split_source(f, name: str, m: Media):
+    """Avid stereo master clip: one mono file SourceMob per channel, one master slot each."""
+    master = f.create.MasterMob(name)
+    f.content.mobs.append(master)
+    for ch in range(m.samples.shape[1]):
+        mono = Media(np.ascontiguousarray(m.samples[:, ch]), m.sample_rate, m.bits, "pcm",
+                     mob_edit_rate=m.mob_edit_rate)
+        inner = _make_source(f, f"{name}.ch{ch + 1}", mono)
+        src_clip = inner.slots[0].segment
+        er = Fraction(m.mob_edit_rate) if m.mob_edit_rate is not None else Fraction(m.sample_rate)
+        mslot = master.create_timeline_slot(edit_rate=er)
+        mslot["PhysicalTrackNumber"].value = ch + 1
+        clip = f.create.SourceClip(media_kind="sound")
+        clip.mob_id = src_clip.mob_id
+        clip.slot_id = 1
+        clip.start = 0
+        clip.length = src_clip.length
+        mslot.segment = clip
+    return master
+
+
 def _make_source(f, name: str, m: Media):
     """Create MasterMob + file SourceMob for one media item; return the MasterMob."""
+    if m.split:
+        return _make_split_source(f, name, m)
     ch = 1 if m.samples.ndim == 1 else m.samples.shape[1]
     frames = m.samples.shape[0]
     rate = m.sample_rate
@@ -191,6 +225,8 @@ def _add_items(f, seq, items, masters):
             seq.components.append(_clip(f, item, masters))
         elif isinstance(item, Effect):
             seq.components.append(_effect(f, item, masters))
+        elif isinstance(item, Combine):
+            seq.components.append(_combine(f, item, masters))
         elif isinstance(item, str) and item == "transition":
             tr = f.create.Transition("sound", 10)
             opdef = f.create.OperationDef("0c3bea41-fc05-11d2-8a29-0050040ef7d2", "Mono Audio Dissolve")
@@ -206,13 +242,30 @@ def _add_items(f, seq, items, masters):
 
 def _clip(f, item: Clip, masters):
     master = masters[item.media]
-    return master.create_source_clip(slot_id=1, start=item.src_start, length=item.length, media_kind="sound")
+    return master.create_source_clip(slot_id=item.slot, start=item.src_start, length=item.length, media_kind="sound")
+
+
+def _combine(f, item: Combine, masters):
+    opdef = f.dictionary.operationdefs.get("6b46dd7a-132d-4856-ab21-8b751d8462ec") if hasattr(
+        f.dictionary, "operationdefs") else None
+    if opdef is None:
+        opdef = f.create.OperationDef("6b46dd7a-132d-4856-ab21-8b751d8462ec", "Audio Channel Combiner")
+        opdef.media_kind = "sound"
+        opdef["NumberInputs"].value = -1
+        f.dictionary.register_def(opdef)
+    og = f.create.OperationGroup(opdef, item.length, "sound")
+    for ch in range(item.channels):
+        og.segments.append(_clip(f, Clip(item.media, item.src_start, item.length, slot=ch + 1), masters))
+    pdef = f.create.ParameterDef("c0038672-a8cf-11d3-a05b-006094eb75cb", "AvidParameterByteOrder", "", "aafUInt16")
+    f.dictionary.register_def(pdef)
+    og.parameters.append(f.create.ConstantValue(pdef, 18761))
+    return og
 
 
 def _effect(f, item: Effect, masters):
     clip = _clip(f, item.clip, masters)
     if item.operation == "gain":
-        opdef = f.create.OperationDef("9d2ea893-0968-11d3-8a38-0050040ef7d2", "Mono Audio Gain")
+        opdef = f.create.OperationDef("9d2ea894-0968-11d3-8a38-0050040ef7d2", "Mono Audio Gain")
         opdef.media_kind = "sound"
         opdef["NumberInputs"].value = 1
         f.dictionary.register_def(opdef)

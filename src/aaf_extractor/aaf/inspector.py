@@ -25,9 +25,13 @@ from .model import (AAFInspection, AudioTrack, EssenceFormat, MediaRef, RecordTi
 log = logging.getLogger(__name__)
 
 # AAF standard operation definitions (AAF Edit Protocol / AAF Object Spec).
-OPDEF_MONO_AUDIO_GAIN = "9d2ea893-0968-11d3-8a38-0050040ef7d2"
-OPDEF_MONO_AUDIO_PAN = "9d2ea894-0968-11d3-8a38-0050040ef7d2"
+OPDEF_MONO_AUDIO_GAIN = "9d2ea894-0968-11d3-8a38-0050040ef7d2"
+OPDEF_MONO_AUDIO_PAN = "9d2ea893-0968-11d3-8a38-0050040ef7d2"
 PARAMDEF_AMPLITUDE = "e4962320-2267-11d3-8a4c-0050040ef7d2"
+# Avid: a stereo (multichannel) track is an OperationGroup with one mono input per channel.
+OPDEF_AUDIO_CHANNEL_COMBINER = "6b46dd7a-132d-4856-ab21-8b751d8462ec"
+# Bookkeeping parameters Avid attaches to its operations; they do not affect the audio.
+AVID_INFO_PARAMETERS = {"AvidParameterByteOrder", "AvidEffectID"}
 
 MAX_RESOLVE_DEPTH = 16
 
@@ -182,6 +186,11 @@ def _media_ref(f, source_mob, source_slot) -> MediaRef:
         try:
             stream = essence.open("r")
             ref.embedded_format = embedded_stream_format(desc, stream, ref.declared)
+            fmt = ref.embedded_format
+            # Avid pads embedded essence streams (to 4 KiB); the bytes after the
+            # declared Length are not audio and must never be read.
+            if ref.length_samples is not None and fmt.frames > ref.length_samples:
+                fmt.data_size = ref.length_samples * fmt.block_align
         except ContainerError as exc:
             ref.problem = f"embedded essence unreadable: {exc}"
         except Exception as exc:  # pyaaf2 raises assorted errors on damaged streams
@@ -299,7 +308,8 @@ def _operation_passthrough(op_group, track: AudioTrack):
     if len(inputs) != 1 or not (is_gain or is_pan):
         raise UnsupportedStructure(f"effect '{op_name}' is applied (audio effects are not supported)")
 
-    params = list(op_group.parameters or [])
+    params = [p for p in (op_group.parameters or [])
+              if (p.parameterdef.name if p.parameterdef is not None else "") not in AVID_INFO_PARAMETERS]
     if is_gain:
         if not params:
             raise UnsupportedStructure(f"'{op_name}' has no amplitude parameter; cannot verify unity gain")
@@ -349,10 +359,56 @@ def _flatten(f, segment, position: int, track: AudioTrack, depth: int = 0) -> It
                            description=f"clip '{segment.mob.name if segment.mob else ''}'")
         return
     if isinstance(segment, C.OperationGroup):
+        if _is_channel_combiner(segment):
+            yield from _flatten_combiner(f, segment, position, track, depth)
+            return
         inner = _operation_passthrough(segment, track)
         yield from _flatten(f, inner, position, track, depth + 1)
         return
     raise UnsupportedStructure(f"{_class_name(segment)} at position {position} is not supported")
+
+
+def _is_channel_combiner(op_group) -> bool:
+    op = op_group.operation
+    if op is None:
+        return False
+    return _opdef_auid(op) == OPDEF_AUDIO_CHANNEL_COMBINER or (op.name or "").lower() == "audio channel combiner"
+
+
+def _flatten_combiner(f, op_group, position: int, track: AudioTrack, depth: int) -> Iterator[TrackSegment]:
+    """One input per channel; each input must itself be a plain mono segment."""
+    inputs = list(op_group.segments or [])
+    if len(inputs) < 2:
+        raise UnsupportedStructure(f"channel combiner with {len(inputs)} input(s) at position {position}")
+    for p in op_group.parameters or []:
+        pname = p.parameterdef.name if p.parameterdef is not None else "?"
+        if pname not in AVID_INFO_PARAMETERS:
+            raise UnsupportedStructure(f"channel combiner parameter '{pname}' is not supported")
+    if track.channels == 1:
+        track.channels = len(inputs)
+    elif track.channels != len(inputs):
+        raise UnsupportedStructure(f"track mixes {track.channels}- and {len(inputs)}-channel clips")
+    for channel, inner in enumerate(inputs):
+        if inner.length != op_group.length:
+            raise UnsupportedStructure(f"channel {channel + 1} input length differs from the combined clip")
+        for seg in _flatten(f, inner, position, track, depth + 1):
+            if seg.combined:
+                raise UnsupportedStructure("nested channel combiners are not supported")
+            seg.channel = channel
+            seg.combined = True
+            seg.description = f"{seg.description} ch{channel + 1}"
+            yield seg
+
+
+def _check_channel_layout(track: AudioTrack):
+    """In a multichannel track every audio clip must come from a channel combiner.
+
+    A bare mono clip there would be ambiguous (which channel?), so it is refused.
+    """
+    if track.channels == 1:
+        return
+    if any(seg.kind == "audio" and not seg.combined for seg in track.segments):
+        raise UnsupportedStructure("track mixes mono and multichannel clips; channel content is ambiguous")
 
 
 def _inspect_track(f, slot) -> AudioTrack:
@@ -370,6 +426,7 @@ def _inspect_track(f, slot) -> AudioTrack:
         return track
     try:
         track.segments = list(_flatten(f, slot.segment, 0, track))
+        _check_channel_layout(track)
     except UnsupportedStructure as exc:
         track.errors.append(str(exc))
         track.segments = []
@@ -404,45 +461,56 @@ def _timecode_rate(fps: int, drop: bool, slot_rate: Fraction) -> TimecodeRate:
 
 
 def _find_record_timecode(mob) -> tuple[RecordTimecode | None, str | None, list[str]]:
+    """Pick the sequence record timecode.
+
+    Avid sequences can carry several timecode tracks (TC1..TCn, e.g. an extra
+    24 fps track). TC1 is the sequence's own record timecode; others are only
+    reported. Without a TC1, disagreeing tracks make the timecode ambiguous.
+    """
     warnings: list[str] = []
-    candidates = []
+    candidates = []   # (slot, RecordTimecode, rate warning or None)
     for slot in mob.slots:
         comps = list(_timecode_components(slot))
         if not comps:
             continue
+        ptn = _prop(slot, "PhysicalTrackNumber")
+        label = _slot_name(slot) or (f"TC{ptn}" if ptn is not None else f"slot {slot.slot_id}")
         pos, tc = comps[0]
         if pos != 0:
-            warnings.append(f"timecode slot {slot.slot_id} does not start at the sequence start")
+            warnings.append(f"timecode track {label} does not start at the sequence start; ignored")
             continue
         slot_rate = _rational(slot.edit_rate)
         try:
             fps = int(tc.fps)
             rate = _timecode_rate(fps, bool(tc.drop), slot_rate)
         except (TimecodeError, TypeError, ValueError) as exc:
-            warnings.append(f"timecode slot {slot.slot_id}: {exc}")
+            warnings.append(f"timecode track {label}: {exc}")
             continue
+        rate_note = None
         if slot_rate not in (Fraction(fps), Fraction(fps * 1000, 1001)):
-            warnings.append(f"timecode slot {slot.slot_id} edit rate {slot_rate} does not match "
-                            f"{fps} fps; assuming {rate.label}")
+            rate_note = f"timecode track {label} runs at edit rate {slot_rate} but counts {fps} fps; assuming {rate.label}"
         origin = _prop(slot, "Origin") or 0
         start = int(tc.start) + int(origin)
-        label = _slot_name(slot) or f"slot {slot.slot_id}"
-        candidates.append((slot, RecordTimecode(start, rate, f"composition timecode track '{label}'")))
+        candidates.append((slot, RecordTimecode(start, rate, f"composition timecode track {label}"), rate_note))
 
     if not candidates:
         return None, "the sequence has no timecode track", warnings
-    if len(candidates) == 1:
-        return candidates[0][1], None, warnings
-    distinct = {(c.start_frames, c.rate) for _, c in candidates}
+    distinct = {(c.start_frames, c.rate) for _, c, _n in candidates}
     if len(distinct) == 1:
-        return candidates[0][1], None, warnings
-    # Prefer the primary timecode track (TC1) when there are several.
-    primary = [c for s, c in candidates
-               if _prop(s, "PhysicalTrackNumber") == 1 or _slot_name(s).upper() == "TC1"]
-    if len(primary) == 1:
-        warnings.append("several timecode tracks found; using TC1")
-        return primary[0], None, warnings
-    return None, "several timecode tracks disagree on the record start", warnings
+        chosen = candidates[0]
+    else:
+        primary = [c for c in candidates
+                   if _prop(c[0], "PhysicalTrackNumber") == 1 or _slot_name(c[0]).upper() == "TC1"]
+        if len(primary) != 1:
+            listing = ", ".join(f"{c.source.split()[-1]} {c.display}" for _, c, _n in candidates)
+            return None, f"timecode tracks disagree and none is TC1 ({listing})", warnings
+        chosen = primary[0]
+        others = ", ".join(f"{c.source.split()[-1]} {c.display}" for _, c, _n in candidates if c is not chosen[1])
+        warnings.append(f"record timecode taken from {chosen[1].source.split()[-1]}; "
+                        f"other timecode tracks ignored: {others}")
+    if chosen[2]:
+        warnings.append(chosen[2])
+    return chosen[1], None, warnings
 
 
 # --- sequences ---------------------------------------------------------------

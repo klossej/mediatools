@@ -66,7 +66,7 @@ def total_samples(duration_seconds: Fraction, sample_rate: int) -> int:
 
 
 def plan_track(track: AudioTrack, resolved: dict[str, ResolvedMedia], sample_rate: int,
-               programme_samples: int) -> ChannelPlan:
+               programme_samples: int, channel: int = 0) -> ChannelPlan:
     """Convert a track's segments into output sample positions.
 
     Segment boundaries are each rounded from exact rational positions, so
@@ -74,9 +74,11 @@ def plan_track(track: AudioTrack, resolved: dict[str, ResolvedMedia], sample_rat
     """
     if track.errors:
         raise PlanError("; ".join(track.errors))
-    plan = ChannelPlan(track.label)
+    if not 0 <= channel < track.channels:
+        raise PlanError(f"{track.label} has no channel {channel + 1}")
+    plan = ChannelPlan(track.channel_label(channel))
     for seg in track.segments:
-        if seg.kind != "audio":
+        if seg.kind != "audio" or seg.channel != channel:
             continue
         start = units_to_samples(seg.record_start, track.edit_rate, sample_rate)
         end = units_to_samples(seg.record_start + seg.length, track.edit_rate, sample_rate)

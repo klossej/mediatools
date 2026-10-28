@@ -4,7 +4,7 @@ from fractions import Fraction
 
 from aafgen import Clip, Effect, Gap, Media, Track, build_aaf, ramp
 from aaf_extractor.aaf.model import RecordTimecode
-from aaf_extractor.batch.models import BatchSettings, JobState
+from aaf_extractor.batch.models import BatchSettings, ChannelRef, JobState
 from aaf_extractor.batch.preflight import preflight
 from aaf_extractor.timecode import TimecodeRate
 from conftest import make_job, name, number
@@ -175,7 +175,7 @@ def test_per_file_override(tmp_path, out_dir):
     p1, p2 = _two(tmp_path, "1.aaf", tracks=tracks), _two(tmp_path, "2.aaf", tracks=tracks)
     jobs = [make_job(p1), make_job(p2)]
     third = jobs[1].sequence.tracks[2]
-    jobs[1].override_right = third.slot_id
+    jobs[1].override_right = ChannelRef(third.slot_id)
     preflight(jobs, BatchSettings(output_dir=str(out_dir), left=number(1), right=number(2)))
     assert jobs[0].right_track.track_number == 2
     assert jobs[1].right_track.track_number == 3

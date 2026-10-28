@@ -19,7 +19,9 @@ def app(tmp_path_factory):
     # Keep the test away from the operator's real saved settings.
     QSettings.setDefaultFormat(QSettings.IniFormat)
     QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, str(tmp_path_factory.mktemp("qsettings")))
-    return QApplication.instance() or QApplication([])
+    app = QApplication.instance() or QApplication([])
+    yield app
+    app.shutdown()   # deterministic teardown, as in main()
 
 
 def _wait(app, predicate, timeout=30):
@@ -65,5 +67,38 @@ def test_main_window_batch_export(app, tmp_path, monkeypatch):
     assert sorted(p.name for p in out.glob("*.wav")) == ["1_MIX.wav", "2_MIX.wav", "3_MIX.wav"]
     w.close()
     # Destroy the window (and its finished worker threads) while QApplication is alive.
+    w.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
+def test_auto_detect_checkbox_exports_mix_from_any_track(app, tmp_path, monkeypatch):
+    import numpy as np
+    from aafgen import Combine
+    from aaf_extractor.gui.main_window import MainWindow
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    shown = []
+    monkeypatch.setattr(MainWindow, "_show_report", lambda self, result: shown.append(result))
+
+    for ep, mix_track in ((1, 31), (2, 27)):
+        mix = np.stack([ramp(48000, ep), ramp(48000, -ep)], axis=1)
+        build_aaf(tmp_path / f"{ep}.aaf",
+                  [Track(1, "", [Clip("dx", 0, 25)]), Track(mix_track, "", [Combine("mix", 0, 25)])],
+                  {"dx": Media(ramp(48000)), "mix": Media(mix, split=True, mob_edit_rate=25)}, tc_start=0)
+    out = tmp_path / "out"
+    w = MainWindow()
+    w.out_edit.setText(str(out))
+    w._on_settings_changed()
+    w.add_paths([str(tmp_path)])
+    assert _wait(app, lambda: w._inspect_worker is None and all(j.inspection for j in w.jobs))
+    w.auto_mix_check.setChecked(True)
+    assert w.settings.auto_mix
+    assert not w.btn_apply_all.isEnabled()
+    assert [j.left_label for j in w.jobs] == ["A31 ch1", "A27 ch1"]
+    assert "(auto)" in w.file_table.item(0, 4).text()
+    w._start_export(selected_only=False)
+    assert _wait(app, lambda: shown)
+    assert shown[0].count("Completed") == 2
+    w.auto_mix_check.setChecked(False)   # do not leak the saved setting into other tests
+    w.close()
     w.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)

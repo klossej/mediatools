@@ -38,15 +38,26 @@ class OverwritePolicy(str, enum.Enum):
 
 @dataclass
 class TrackSelector:
-    """How the batch mapping identifies a track in every file."""
+    """How the batch mapping identifies a track (and channel) in every file.
+
+    ``channel`` is None for a mono track, or the 0-based channel of a
+    multichannel (stereo) track.
+    """
     method: MatchMethod
     value: str | int
+    channel: int | None = None
 
     @property
     def label(self) -> str:
-        if self.method == MatchMethod.NUMBER:
-            return f"A{self.value}"
-        return f"“{self.value}”"
+        base = f"A{self.value}" if self.method == MatchMethod.NUMBER else f"\u201c{self.value}\u201d"
+        return base if self.channel is None else f"{base} ch{self.channel + 1}"
+
+
+@dataclass(frozen=True)
+class ChannelRef:
+    """One output source: a track (by slot id) and a channel within it."""
+    slot_id: int
+    channel: int = 0
 
 
 @dataclass
@@ -57,6 +68,7 @@ class BatchSettings:
     right: TrackSelector | None = None
     overwrite: OverwritePolicy = OverwritePolicy.SKIP
     media_folders: list[str] = field(default_factory=list)
+    auto_mix: bool = False        # detect the stereo mix track per file instead of left/right
 
 
 @dataclass
@@ -64,14 +76,17 @@ class Job:
     path: str
     inspection: AAFInspection | None = None
     sequence_index: int | None = None        # None until chosen (auto when only one)
-    override_left: int | None = None         # slot ids, per-file override
-    override_right: int | None = None
+    override_left: ChannelRef | None = None  # per-file override
+    override_right: ChannelRef | None = None
     timecode_override: RecordTimecode | None = None
     state: JobState = JobState.PENDING
     messages: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     left_track: AudioTrack | None = None     # resolved by preflight
     right_track: AudioTrack | None = None
+    left_channel: int = 0
+    right_channel: int = 0
+    selection: str = ""                      # how the tracks were chosen (for display / report)
     output_path: str | None = None
     exported_path: str | None = None
     exported_frames: int | None = None
@@ -98,6 +113,14 @@ class Job:
             return self.timecode_override
         seq = self.sequence
         return seq.timecode if seq else None
+
+    @property
+    def left_label(self) -> str:
+        return self.left_track.channel_label(self.left_channel) if self.left_track else ""
+
+    @property
+    def right_label(self) -> str:
+        return self.right_track.channel_label(self.right_channel) if self.right_track else ""
 
     @property
     def has_override(self) -> bool:

@@ -35,8 +35,15 @@ def main() -> int:
     try:
         return app.exec()
     finally:
-        # Destroy widgets and worker threads before QApplication goes away.
+        # Tear Qt down in a fixed order (window and its finished worker threads,
+        # then the application) instead of leaving it to garbage collection at
+        # interpreter exit, which can crash.
+        from PySide6.QtCore import QCoreApplication, QEvent
+        window.stop_workers()
+        window.deleteLater()
+        QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
         del window
+        app.shutdown()
         logging.shutdown()
 
 

@@ -66,6 +66,8 @@ class TrackSegment:
     media: MediaRef | None = None
     source_start: Fraction = Fraction(0)  # seconds into the media
     description: str = ""
+    channel: int = 0              # channel of a multichannel (e.g. stereo) track
+    combined: bool = False        # came from a channel combiner input
 
 
 @dataclass
@@ -75,6 +77,7 @@ class AudioTrack:
     name: str
     edit_rate: Fraction
     length: int                   # edit units
+    channels: int = 1             # 2 for an Avid stereo track (Audio Channel Combiner)
     segments: list[TrackSegment] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)    # unsupported structures
     warnings: list[str] = field(default_factory=list)
@@ -91,6 +94,11 @@ class AudioTrack:
     @property
     def duration(self) -> Fraction:
         return Fraction(self.length) / self.edit_rate
+
+    def channel_label(self, channel: int) -> str:
+        """``A31`` for a mono track, ``A31 ch1`` for channel 1 of a multichannel track."""
+        base = f"A{self.track_number}" if self.track_number is not None else (self.name or f"Slot {self.slot_id}")
+        return f"{base} ch{channel + 1}" if self.channels > 1 else base
 
     @property
     def supported(self) -> bool:
@@ -111,7 +119,8 @@ class AudioTrack:
                 formats.add(f"{fmt.sample_rate / 1000:g} kHz / {fmt.bits}-bit")
         if not formats:
             return "—"
-        return ", ".join(sorted(formats))
+        layout = "" if self.channels == 1 else (" · stereo" if self.channels == 2 else f" · {self.channels} ch")
+        return ", ".join(sorted(formats)) + layout
 
 
 @dataclass

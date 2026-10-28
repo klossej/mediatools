@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings, Qt, QThread, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QDialog, QDialogButtonBox,
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
                                QFileDialog, QFormLayout, QFrame, QGridLayout, QHBoxLayout, QHeaderView,
                                QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar, QPushButton,
                                QSplitter, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox, QDial
 from .. import APP_NAME, __version__
 from ..aaf.model import RecordTimecode
 from ..appinfo import diagnostic_report
-from ..batch.models import (BatchSettings, Job, JobState, MatchMethod, OverwritePolicy,
+from ..batch.models import (BatchSettings, ChannelRef, Job, JobState, MatchMethod, OverwritePolicy,
                             TrackSelector)
 from ..batch.naming import DEFAULT_SUFFIX, output_name
 from ..batch.preflight import PreflightIssue, match_track, preflight
@@ -246,10 +246,18 @@ class MainWindow(QMainWindow):
         self.track_table = _table(TRACK_COLUMNS)
         th = self.track_table.horizontalHeader()
         th.setStretchLastSection(True)
-        for col, width in enumerate([60, 160, 150, 115]):
+        for col, width in enumerate([60, 140, 180, 110]):
             self.track_table.setColumnWidth(col, width)
         self.track_table.setSelectionMode(QAbstractItemView.NoSelection)
         lay.addWidget(self.track_table, 1)
+
+        self.auto_mix_check = QCheckBox("Auto-detect stereo mix track in every file")
+        self.auto_mix_check.setToolTip(
+            "Per file, use the stereo track whose audio spans at least 90% of the sequence\n"
+            "(channel 1 \u2192 Left, channel 2 \u2192 Right). If several qualify, the one named MIX wins;\n"
+            "otherwise the file is marked Needs attention. Per-file overrides still apply.")
+        self.auto_mix_check.toggled.connect(self._on_auto_mix_toggled)
+        lay.addWidget(self.auto_mix_check)
 
         assign = QGridLayout()
         assign.setHorizontalSpacing(8)
@@ -259,6 +267,7 @@ class MainWindow(QMainWindow):
         assign.addWidget(_secondary("Right channel"), 0, 2)
         self.right_combo = QComboBox()
         assign.addWidget(self.right_combo, 0, 3)
+        self.left_combo.activated.connect(self._on_left_chosen)
         assign.setColumnStretch(1, 1)
         assign.setColumnStretch(3, 1)
         lay.addLayout(assign)
@@ -380,6 +389,7 @@ class MainWindow(QMainWindow):
         self.media_edit.setText(q.value("media_folder", "", str))
         method = q.value("match_method", MatchMethod.NUMBER.value, str)
         self.match_combo.setCurrentIndex(1 if method == MatchMethod.NAME.value else 0)
+        self.auto_mix_check.setChecked(q.value("auto_mix", False, bool))
         policy = q.value("overwrite", OverwritePolicy.SKIP.value, str)
         for i in range(self.overwrite_combo.count()):
             if self.overwrite_combo.itemData(i) == policy:
@@ -393,6 +403,7 @@ class MainWindow(QMainWindow):
         q.setValue("media_folder", self.media_edit.text().strip())
         q.setValue("match_method", self.match_combo.currentData())
         q.setValue("overwrite", self.settings.overwrite.value)
+        q.setValue("auto_mix", self.settings.auto_mix)
 
     def _sync_settings(self):
         s = self.settings
@@ -401,6 +412,7 @@ class MainWindow(QMainWindow):
         s.overwrite = OverwritePolicy(self.overwrite_combo.currentData())
         media = self.media_edit.text().strip()
         s.media_folders = [media] if media else []
+        s.auto_mix = self.auto_mix_check.isChecked()
 
     def _on_settings_changed(self, *_):
         if self._loading_settings:
@@ -408,6 +420,13 @@ class MainWindow(QMainWindow):
         self._sync_settings()
         self._save_settings()
         self._run_preflight()
+
+    def _on_auto_mix_toggled(self, checked: bool):
+        if self._loading_settings:
+            return
+        self.status.setText("Auto-detect on: each file's stereo mix track is found automatically." if checked
+                            else "Auto-detect off: the batch mapping (Left/Right) is used.")
+        self._on_settings_changed()
 
     def _on_media_folder_changed(self):
         self._media_index = None
@@ -524,12 +543,15 @@ class MainWindow(QMainWindow):
         if self.settings.left or self.settings.right:
             return
         seq = job.sequence
-        if seq is None or len(seq.tracks) < 2:
+        if seq is None:
+            return
+        sources = [(t, ch) for t in seq.tracks for ch in range(t.channels)]
+        if len(sources) < 2:
             return
         method = MatchMethod(self.match_combo.currentData())
         try:
-            self.settings.left = self._selector_for(seq.tracks[0], method)
-            self.settings.right = self._selector_for(seq.tracks[1], method)
+            self.settings.left = self._selector_for(*sources[0], method)
+            self.settings.right = self._selector_for(*sources[1], method)
         except ValueError:
             self.settings.left = self.settings.right = None
 
@@ -639,13 +661,15 @@ class MainWindow(QMainWindow):
             self.track_table.setItem(r, 4, it)
             if t.warnings:
                 self.track_table.item(r, 1).setToolTip("\n".join(t.warnings))
-            self.left_combo.addItem(t.label, t.slot_id)
-            self.right_combo.addItem(t.label, t.slot_id)
-        for combo, track in ((self.left_combo, job.left_track), (self.right_combo, job.right_track)):
-            if track is not None:
-                combo.setCurrentIndex(combo.findData(track.slot_id))
-            else:
-                combo.setCurrentIndex(-1)
+            for ch in range(t.channels):
+                text = t.channel_label(ch) + (f" \u2014 {t.name}" if t.name else "")
+                if t.channels == 2:
+                    text += "  (stereo L)" if ch == 0 else "  (stereo R)"
+                self.left_combo.addItem(text, f"{t.slot_id}:{ch}")
+                self.right_combo.addItem(text, f"{t.slot_id}:{ch}")
+        for combo, track, ch in ((self.left_combo, job.left_track, job.left_channel),
+                                 (self.right_combo, job.right_track, job.right_channel)):
+            combo.setCurrentIndex(combo.findData(f"{track.slot_id}:{ch}") if track is not None else -1)
 
     def _on_sequence_changed(self, _index):
         job = self._selected_job()
@@ -678,23 +702,43 @@ class MainWindow(QMainWindow):
         job.timecode_override = None
         self._run_preflight()
 
-    def _selector_for(self, track, method: MatchMethod) -> TrackSelector:
+    def _selector_for(self, track, channel: int, method: MatchMethod) -> TrackSelector:
+        ch = channel if track.channels > 1 else None
         if method == MatchMethod.NUMBER:
             if track.track_number is None:
                 raise ValueError(f"{track.label} has no track number; match by name instead")
-            return TrackSelector(method, track.track_number)
+            return TrackSelector(method, track.track_number, ch)
         if not track.name:
             raise ValueError(f"{track.label} has no name in the AAF; match by track number instead")
-        return TrackSelector(method, track.name)
+        return TrackSelector(method, track.name, ch)
+
+    @staticmethod
+    def _combo_source(combo, seq):
+        """(track, channel) chosen in a left/right combo, or None."""
+        data = combo.currentData() if combo.currentIndex() >= 0 else None
+        if not data:
+            return None
+        slot, ch = (int(x) for x in str(data).split(":"))
+        track = seq.track_by_slot(slot)
+        return (track, ch) if track is not None else None
 
     def _chosen_tracks(self):
         job = self._selected_job()
         if job is None or job.sequence is None:
             return None, None, None
         seq = job.sequence
-        left = seq.track_by_slot(self.left_combo.currentData()) if self.left_combo.currentIndex() >= 0 else None
-        right = seq.track_by_slot(self.right_combo.currentData()) if self.right_combo.currentIndex() >= 0 else None
-        return job, left, right
+        return job, self._combo_source(self.left_combo, seq), self._combo_source(self.right_combo, seq)
+
+    def _on_left_chosen(self, _index):
+        """Picking channel 1 of a stereo track as Left proposes channel 2 as Right."""
+        job = self._selected_job()
+        if job is None or job.sequence is None:
+            return
+        src = self._combo_source(self.left_combo, job.sequence)
+        if src and src[0].channels == 2 and src[1] == 0:
+            idx = self.right_combo.findData(f"{src[0].slot_id}:1")
+            if idx >= 0:
+                self.right_combo.setCurrentIndex(idx)
 
     def _apply_to_all(self):
         job, left, right = self._chosen_tracks()
@@ -703,8 +747,8 @@ class MainWindow(QMainWindow):
             return
         method = MatchMethod(self.match_combo.currentData())
         try:
-            self.settings.left = self._selector_for(left, method)
-            self.settings.right = self._selector_for(right, method)
+            self.settings.left = self._selector_for(*left, method)
+            self.settings.right = self._selector_for(*right, method)
         except ValueError as exc:
             QMessageBox.warning(self, APP_NAME, str(exc))
             return
@@ -723,11 +767,13 @@ class MainWindow(QMainWindow):
         if job is None or left is None or right is None:
             self.status.setText("Choose a left and a right track for this file first.")
             return
-        job.override_left, job.override_right = left.slot_id, right.slot_id
+        job.override_left = ChannelRef(left[0].slot_id, left[1])
+        job.override_right = ChannelRef(right[0].slot_id, right[1])
         if job.state == JobState.COMPLETED:
             job.state = JobState.READY
-        self.status.setText(f"{job.filename}: override Left {left.label}, Right {right.label}.")
-        log.info("override %s: left slot %s right slot %s", job.filename, left.slot_id, right.slot_id)
+        left_label, right_label = left[0].channel_label(left[1]), right[0].channel_label(right[1])
+        self.status.setText(f"{job.filename}: override Left {left_label}, Right {right_label}.")
+        log.info("override %s: left %s right %s", job.filename, job.override_left, job.override_right)
         self._run_preflight()
 
     def _revert_override(self):
@@ -747,8 +793,8 @@ class MainWindow(QMainWindow):
             try:
                 left = match_track(job.sequence, self.settings.left)
                 right = match_track(job.sequence, self.settings.right)
-                self.settings.left = self._selector_for(left, method)
-                self.settings.right = self._selector_for(right, method)
+                self.settings.left = self._selector_for(*left, method)
+                self.settings.right = self._selector_for(*right, method)
             except (PreflightIssue, ValueError) as exc:
                 self.status.setText(f"Could not convert the batch mapping: {exc}")
         self._save_settings()
@@ -806,11 +852,14 @@ class MainWindow(QMainWindow):
         tc = job.timecode
         insp = job.inspection
         seq_text = seq.name if seq else ("choose…" if insp and len(insp.sequences) > 1 else "—")
-        left = job.left_track.label if job.left_track else "—"
-        right = job.right_track.label if job.right_track else "—"
+        left = job.left_label or "—"
+        right = job.right_label or "—"
         if job.has_override:
             left += " *"
             right += " *"
+        elif job.selection == "auto-detected":
+            left += " (auto)"
+            right += " (auto)"
         cells = [
             job.filename,
             seq_text,
@@ -829,9 +878,14 @@ class MainWindow(QMainWindow):
 
     def _update_mapping_label(self):
         s = self.settings
-        if s.left and s.right:
+        overrides = sum(1 for j in self.jobs if j.has_override)
+        if s.auto_mix:
+            text = "Track selection: auto-detect the stereo mix track in each file"
+            if overrides:
+                text += f" \u00b7 {overrides} file(s) overridden (marked *)"
+            self.mapping_label.setText(text)
+        elif s.left and s.right:
             how = "track number" if s.left.method == MatchMethod.NUMBER else "track name"
-            overrides = sum(1 for j in self.jobs if j.has_override)
             text = f"Batch mapping: Left {s.left.label} · Right {s.right.label}  (matched by {how})"
             if overrides:
                 text += f" · {overrides} file(s) overridden (marked *)"
@@ -859,6 +913,11 @@ class MainWindow(QMainWindow):
         for w in (self.btn_apply_all, self.btn_override, self.left_combo, self.right_combo, self.btn_tc,
                   self.match_combo):
             w.setEnabled(editable)
+        auto = self.auto_mix_check.isChecked()
+        self.btn_apply_all.setEnabled(editable and not auto)
+        self.match_combo.setEnabled(editable and not auto)
+        self.btn_revert.setText("Revert to Auto-detect" if auto else "Revert to Batch Mapping")
+        self.auto_mix_check.setEnabled(not busy)
         self.btn_revert.setEnabled(editable and job.has_override)
         self.btn_tc_clear.setEnabled(editable and job.timecode_override is not None)
         ready = any(j.state == JobState.READY for j in self.jobs)
@@ -1011,18 +1070,33 @@ class MainWindow(QMainWindow):
         paths = [u.toLocalFile() for u in event.mimeData().urls() if u.isLocalFile()]
         self.add_paths(paths)
 
+    def stop_workers(self):
+        """Cancel background work and wait for the threads to finish.
+
+        A QThread destroyed while running aborts the process, so this must run
+        before the window goes away. Waiting is bounded: inspection stops after
+        the file being read, export within one render block (and removes its
+        incomplete output file).
+        """
+        for worker, thread in ((self._export_worker, getattr(self, "_export_thread", None)),
+                               (self._inspect_worker, getattr(self, "_inspect_thread", None))):
+            if worker is not None:
+                worker.cancel.set()
+            if thread is not None:
+                thread.quit()
+                thread.wait()
+
     def closeEvent(self, event):
         if self._busy():
             answer = QMessageBox.question(self, APP_NAME, "An export is running. Cancel it and quit?")
             if answer != QMessageBox.Yes:
                 event.ignore()
                 return
-            self._export_worker.cancel.set()
-            self._export_thread.quit()
-            self._export_thread.wait(10000)
-        if self._inspect_worker:
-            self._inspect_worker.cancel.set()
-            self._inspect_thread.quit()
-            self._inspect_thread.wait(5000)
+        self.hide()
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            self.stop_workers()
+        finally:
+            QApplication.restoreOverrideCursor()
         self._save_settings()
         event.accept()

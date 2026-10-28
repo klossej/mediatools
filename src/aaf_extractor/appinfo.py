@@ -71,8 +71,9 @@ def diagnostic_report(jobs, settings, log_tail_lines: int = 400) -> str:
         "Settings",
         f"  Output folder: {settings.output_dir or '(not set)'}",
         f"  Suffix: {settings.suffix}",
-        f"  Left: {settings.left.method.value + ' ' + str(settings.left.value) if settings.left else '(not set)'}",
-        f"  Right: {settings.right.method.value + ' ' + str(settings.right.value) if settings.right else '(not set)'}",
+        f"  Left: {settings.left.label + ' (by ' + settings.left.method.value + ')' if settings.left else '(not set)'}",
+        f"  Right: {settings.right.label + ' (by ' + settings.right.method.value + ')' if settings.right else '(not set)'}",
+        f"  Auto-detect stereo mix track: {'on' if settings.auto_mix else 'off'}",
         f"  Existing files: {settings.overwrite.value}",
         f"  Media search folders: {', '.join(settings.media_folders) or '(none)'}",
         "",
@@ -102,7 +103,7 @@ def diagnostic_report(jobs, settings, log_tail_lines: int = 400) -> str:
             for w in seq.warnings:
                 lines.append(f"    Warning: {w}")
             for t in seq.tracks:
-                lines.append(f"    Track {t.label}: slot {t.slot_id}, edit rate {t.edit_rate}, length {t.length}, "
+                lines.append(f"    Track {t.label}: slot {t.slot_id}, {t.channels} ch, edit rate {t.edit_rate}, length {t.length}, "
                              f"{len(t.segments)} components, format {t.format_summary()}")
                 for e in t.errors:
                     lines.append(f"      ERROR: {e}")
