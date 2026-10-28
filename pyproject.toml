@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aaf-audio-extractor"
+version = "0.1.0"
+description = "Extract premixed audio tracks from Avid AAF files to stereo Broadcast Wave files with record timecode."
+readme = "README.md"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "PySide6-Essentials==6.12.0",
+    "numpy==2.5.4",
+    "pyaaf2==1.7.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.2.0", "pyinstaller==6.22.3"]
+
+[project.gui-scripts]
+aaf-audio-extractor = "aaf_extractor.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+addopts = "-ra"
+markers = [
+    "slow: long-running tests (streaming a full-length programme)",
+    "gui: tests that start the Qt user interface (offscreen)",
+]

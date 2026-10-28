@@ -1,0 +1,6 @@
+﻿Input AAF,Sequence,Left track,Right track,Record timecode,Timecode rate,Timecode source,Exported file,Duration,Duration (samples),Sample rate,Bit depth,BWF TimeReference,Result,Message,Warnings
+501.aaf,LI S5 EP501 MIX,A1,A2,10:00:00:00,25 NDF,composition timecode track 'TC1',501_MIX.wav,00:00:10.000,480000,48000,24,1728000000,Completed,,
+502.aaf,LI S5 EP502 MIX,A1,A2,10:00:07:00,25 NDF,composition timecode track 'TC1',502_MIX.wav,00:00:10.000,480000,48000,24,1728336000,Completed,,
+503.aaf,LI S5 EP503 MIX,A1,A2,10:00:14:00,25 NDF,composition timecode track 'TC1',503_MIX.wav,00:00:10.000,480000,48000,24,1728672000,Completed,,
+504.aaf,LI S5 EP504 MIX,A1,,10:00:21:00,25 NDF,composition timecode track 'TC1',,00:00:10.000,,,,,Skipped,Needs attention: track A2 not found,
+505.aaf,,,,,,,,,,,,,Skipped,Unsupported: cannot open AAF: invalid file magic signature: [b'not an a'],
