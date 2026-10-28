@@ -1,5 +1,6 @@
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# Settings and logs of test runs go to a throw-away folder, never the operator's.
+os.environ["AAF_EXTRACTOR_DATA_DIR"] = tempfile.mkdtemp(prefix="aaf_extractor_test_data_")
 
 from aaf_extractor.aaf.inspector import inspect_aaf  # noqa: E402
 from aaf_extractor.batch.models import (BatchSettings, Job, JobState, MatchMethod,  # noqa: E402

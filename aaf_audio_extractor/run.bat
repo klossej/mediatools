@@ -4,6 +4,9 @@ rem Any .aaf files or folders given as arguments are added to the queue.
 setlocal EnableExtensions
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
+set "PYTHONNOUSERSITE=1"
+set "PYTHONHOME="
+set "PYTHONPATH="
 if not exist "%ROOT%\.venv\Scripts\python.exe" (
     echo .venv not found. Run install.bat first.
     pause

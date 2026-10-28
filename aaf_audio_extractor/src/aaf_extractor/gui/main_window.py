@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox, QComb
 
 from .. import APP_NAME, __version__
 from ..aaf.model import RecordTimecode
-from ..appinfo import diagnostic_report
+from ..appinfo import diagnostic_report, settings_file
 from ..batch.models import (BatchSettings, ChannelRef, Job, JobState, MatchMethod, OverwritePolicy,
                             TrackSelector)
 from ..batch.discover import find_aaf_files
@@ -138,7 +138,9 @@ class MainWindow(QMainWindow):
         self.resize(1280, 820)
         self.jobs: list[Job] = []
         self.settings = BatchSettings()
-        self.qsettings = QSettings("AAF Audio Extractor", "AAF Audio Extractor")
+        # An INI file rather than the Windows registry: nothing is left behind
+        # in the registry, and the file sits next to the logs.
+        self.qsettings = QSettings(str(settings_file()), QSettings.IniFormat)
         self._threads: list[QThread] = []
         self._inspect_worker: InspectWorker | None = None
         self._export_worker: ExportWorker | None = None

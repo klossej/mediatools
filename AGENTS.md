@@ -9,8 +9,11 @@ post-production. Each tool is a self-contained top-level folder:
 
 - its own `README.md`, `pyproject.toml`, pinned `requirements*.txt`, `tests/`,
   `docs/` and build scripts;
-- its own virtual environment in `<tool>/.venv` (git-ignored, never shared
-  between tools);
+- its own private Python in `<tool>/.python` (Windows: unpacked from the official
+  python.org NuGet package by `install.bat`, never installed into Windows) and
+  its own virtual environment in `<tool>/.venv`. Both are git-ignored and never
+  shared between tools. Deleting a tool's folder must leave nothing behind
+  except its documented per-user data folder (no registry, no PATH changes);
 - no imports across tool folders. Shared code would get its own folder and
   explicit packaging first.
 
@@ -42,6 +45,9 @@ On Windows, `install.bat` does the setup, runs the tests and builds
 - Match the surrounding code: dataclasses for plain data, `fractions.Fraction`
   for any timing arithmetic (never floats), small focused modules, and comments
   that explain *why*.
+- Do not use the Windows registry: application settings go to an INI file in the
+  per-user data folder (`%LOCALAPPDATA%\<App Name>`), and caches stay in the tool
+  folder.
 - Windows `.bat` files use CRLF line endings (enforced by `.gitattributes`).
   Resolve paths from the script location (`%~dp0`) and quote every path.
 - Every behaviour change comes with a test. Prefer synthetic fixtures generated

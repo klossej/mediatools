@@ -36,19 +36,27 @@ per-file overrides, manual timecode, retrying failed files, and linked media.
 
 Double-click **`install.bat`** in this folder (`mediatools\aaf_audio_extractor`). It:
 
-1. Finds 64-bit Python 3.12 or 3.13. If neither is found, it offers to download
-   Python 3.12.10 from python.org. It checks the installer's SHA-256 checksum and
-   its Python Software Foundation Authenticode signature, then installs it for the
-   current user only (no administrator rights).
-2. Creates the local virtual environment `.venv`, or reuses it if it is healthy.
+1. Sets up a **private Python 3.12.10 inside this folder** (`.python`). On first
+   run it downloads the official python.org NuGet package of CPython (about
+   15 MB), checks its pinned SHA-256 and the Python Software Foundation signature
+   on `python.exe`, and unpacks it. Nothing is installed into Windows: no
+   registry entries, no PATH change, no Start menu or "Programs and Features"
+   entry. Any system-wide Python is neither used nor touched.
+2. Creates the virtual environment `.venv` from that Python, or reuses it if it
+   is healthy. A `.venv` made from another Python is rebuilt.
 3. Installs the pinned dependencies from `requirements-build.txt` (wheels only).
+   The pip and PyInstaller caches are kept in `.cache`, also inside this folder.
 4. Checks that the toolchain imports correctly.
 5. Runs the automated tests, then builds the executable with PyInstaller.
 
 The finished application is in **`dist\AAF Audio Extractor\`**. Copy that whole
 folder to any 64-bit Windows 10/11 PC; Python is not needed there. The script
 can be run again at any time and never touches the application's saved settings.
-Output goes to `logs\install.log`.
+Output goes to `logs\install.log`. Use `install.bat /yes` to run it unattended.
+
+**Removing it:** delete the folder. The private Python, `.venv`, caches and
+builds all live inside it. The only thing outside is the per-user data folder
+described under *Logs and diagnostics*, which you can delete as well.
 
 | Script | Purpose |
 |---|---|
@@ -188,6 +196,8 @@ rest of the batch continues:
 
 ## Logs and diagnostics
 
+* Settings (output folder, suffix, auto-detect…) are stored in
+  `%LOCALAPPDATA%\AAF Audio Extractor\settings.ini`, not in the registry.
 * Log file: `%LOCALAPPDATA%\AAF Audio Extractor\logs\aaf_audio_extractor.log`
   (rotating). It records each file, sequence, timecode, edit rate, tracks, source
   media IDs, source in-points, timeline offsets, sample counts and TimeReference.

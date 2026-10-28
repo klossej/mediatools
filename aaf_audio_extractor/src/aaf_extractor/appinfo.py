@@ -25,12 +25,28 @@ def resource_dir() -> Path:
     return Path(__file__).resolve().parents[2] / "resources"
 
 
+DATA_DIR_ENV = "AAF_EXTRACTOR_DATA_DIR"
+
+
 def user_data_dir() -> Path:
+    """Per-user folder for settings and logs (no registry is used).
+
+    ``AAF_EXTRACTOR_DATA_DIR`` overrides it, e.g. to keep tests away from real settings.
+    """
+    override = os.environ.get(DATA_DIR_ENV)
+    if override:
+        return Path(override)
     if os.name == "nt":
         root = Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
     else:
         root = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
     return root / APP_NAME
+
+
+def settings_file() -> Path:
+    path = user_data_dir()
+    path.mkdir(parents=True, exist_ok=True)
+    return path / "settings.ini"
 
 
 def log_dir() -> Path:

@@ -2,6 +2,7 @@
 rem ===========================================================================
 rem  AAF Audio Extractor - run tests and build the Windows executable.
 rem  Requires the .venv created by install.bat. Run install.bat first.
+rem  Uses only the folder-local Python and keeps all caches in .cache.
 rem  Usage: build.bat [/nopause] [/skiptests]
 rem ===========================================================================
 setlocal EnableExtensions DisableDelayedExpansion
@@ -13,6 +14,11 @@ cd /d "%ROOT%" || goto :fail
 set "VPY=%ROOT%\.venv\Scripts\python.exe"
 set "APPDIR=%ROOT%\dist\AAF Audio Extractor"
 set "APPEXE=%APPDIR%\AAF Audio Extractor.exe"
+set "PYINSTALLER_CONFIG_DIR=%ROOT%\.cache\pyinstaller"
+set "PIP_CACHE_DIR=%ROOT%\.cache\pip"
+set "PYTHONNOUSERSITE=1"
+set "PYTHONHOME="
+set "PYTHONPATH="
 set "PAUSE_AT_END=1"
 set "RUN_TESTS=1"
 :args

@@ -6,7 +6,7 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets")
 
-from PySide6.QtCore import QCoreApplication, QEvent, QSettings  # noqa: E402
+from PySide6.QtCore import QCoreApplication, QEvent  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 from aafgen import Clip, Media, Track, build_aaf, ramp  # noqa: E402
@@ -15,10 +15,8 @@ pytestmark = pytest.mark.gui
 
 
 @pytest.fixture(scope="module")
-def app(tmp_path_factory):
-    # Keep the test away from the operator's real saved settings.
-    QSettings.setDefaultFormat(QSettings.IniFormat)
-    QSettings.setPath(QSettings.IniFormat, QSettings.UserScope, str(tmp_path_factory.mktemp("qsettings")))
+def app():
+    # Settings are isolated by AAF_EXTRACTOR_DATA_DIR (set in conftest.py).
     app = QApplication.instance() or QApplication([])
     yield app
     app.shutdown()   # deterministic teardown, as in main()
@@ -101,6 +99,22 @@ def test_auto_detect_checkbox_exports_mix_from_any_track(app, tmp_path, monkeypa
     assert _wait(app, lambda: shown)
     assert shown[0].count("Completed") == 2
     w.auto_mix_check.setChecked(False)   # do not leak the saved setting into other tests
+    w.close()
+    w.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
+
+
+def test_settings_are_an_ini_file_not_the_registry(app):
+    from aaf_extractor.appinfo import settings_file
+    from aaf_extractor.gui.main_window import MainWindow
+    w = MainWindow()
+    w.suffix_edit.setText("_PRINTMASTER")
+    w._on_settings_changed()
+    w.qsettings.sync()
+    assert w.qsettings.fileName() == str(settings_file())
+    assert "_PRINTMASTER" in settings_file().read_text()
+    w.suffix_edit.setText("_MIX")
+    w._on_settings_changed()
     w.close()
     w.deleteLater()
     QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
