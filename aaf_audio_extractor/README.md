@@ -14,6 +14,7 @@ Version 0.1.0. It does one job: no editing, mixing or effect rendering.
 
 1. Double-click **`AAF Audio Extractor.exe`** (in `dist\AAF Audio Extractor\`).
 2. Drag the AAF files, or the folder that holds them, into the window.
+   Subfolders are included, e.g. `EPISODES\501\LI_501.aaf`, `EPISODES\502\LI_502.aaf`.
 
 **Stereo mix that may sit on different tracks:** tick **Auto-detect stereo mix
 track in every file**, choose the output folder and click **Export All**. That's
@@ -33,7 +34,7 @@ per-file overrides, manual timecode, retrying failed files, and linked media.
 
 ## Building the Windows application (developers)
 
-Double-click **`install.bat`** in the repository root. It:
+Double-click **`install.bat`** in this folder (`mediatools\aaf_audio_extractor`). It:
 
 1. Finds 64-bit Python 3.12 or 3.13. If neither is found, it offers to download
    Python 3.12.10 from python.org. It checks the installer's SHA-256 checksum and

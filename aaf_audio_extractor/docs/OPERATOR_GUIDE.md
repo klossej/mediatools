@@ -11,7 +11,10 @@
 ## Standard batch (for example, 32 episodes)
 
 1. **Add the files.** Drag the AAFs, or their folder, onto the window, or use
-   **Add AAF Files…** or **Add Folder…**. Each file is inspected in the
+   **Add AAF Files…** or **Add Folder…**. Folders are searched with all their
+   subfolders, so one root folder with a folder per episode (`501\LI_501.aaf`,
+   `502\LI_502.aaf`, …) adds the whole series in episode order. Hidden and system
+   folders are skipped, and files already in the list are not added twice. Each file is inspected in the
    background; the status reads *Inspecting* until it has been read.
 2. **Pick the tracks.** Click any file. In **Tracks**, set **Left channel** and
    **Right channel**. The table shows each track's number, name, format, duration

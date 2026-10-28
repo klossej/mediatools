@@ -1,0 +1,7 @@
+# Repository-wide ignores; each tool has its own .gitignore as well.
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+Thumbs.db

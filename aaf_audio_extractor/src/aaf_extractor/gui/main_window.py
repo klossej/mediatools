@@ -18,6 +18,7 @@ from ..aaf.model import RecordTimecode
 from ..appinfo import diagnostic_report
 from ..batch.models import (BatchSettings, ChannelRef, Job, JobState, MatchMethod, OverwritePolicy,
                             TrackSelector)
+from ..batch.discover import find_aaf_files
 from ..batch.naming import DEFAULT_SUFFIX, output_name
 from ..batch.preflight import PreflightIssue, match_track, preflight
 from ..batch.runner import RESULT_COMPLETED, BatchResult
@@ -196,6 +197,7 @@ class MainWindow(QMainWindow):
         top.addStretch(1)
         self.btn_add = QPushButton("Add AAF Files…")
         self.btn_add_folder = QPushButton("Add Folder…")
+        self.btn_add_folder.setToolTip("Adds every .aaf file in the folder and all its subfolders.")
         self.btn_remove = QPushButton("Remove Selected")
         self.btn_clear = QPushButton("Clear List")
         for b in (self.btn_add, self.btn_add_folder, self.btn_remove, self.btn_clear):
@@ -458,37 +460,37 @@ class MainWindow(QMainWindow):
 
     def _add_folder(self):
         start = self.qsettings.value("last_input_dir", str(Path.home()), str)
-        folder = QFileDialog.getExistingDirectory(self, "Add Folder of AAF Files", start)
+        folder = QFileDialog.getExistingDirectory(
+            self, "Add Folder of AAF Files (subfolders included)", start)
         if folder:
             self.qsettings.setValue("last_input_dir", folder)
             self.add_paths([folder])
 
-    @staticmethod
-    def _expand(paths) -> list[str]:
-        out = []
-        for p in paths:
-            p = Path(p)
-            if p.is_dir():
-                out.extend(str(c) for c in sorted(p.iterdir(), key=lambda c: c.name.lower())
-                           if c.is_file() and c.suffix.lower() == ".aaf")
-            elif p.suffix.lower() == ".aaf":
-                out.append(str(p))
-        return out
-
     def add_paths(self, paths):
         if self._busy():
             return
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            found = find_aaf_files(paths)
+        finally:
+            QApplication.restoreOverrideCursor()
         known = {os.path.normcase(os.path.abspath(j.path)) for j in self.jobs}
         new_jobs = []
-        for p in self._expand(paths):
+        for p in found:
             key = os.path.normcase(os.path.abspath(p))
             if key in known:
                 continue
             known.add(key)
             new_jobs.append(Job(str(Path(p).resolve())))
         if not new_jobs:
-            self.status.setText("No new .aaf files to add.")
+            self.status.setText("No new .aaf files found." if not found else
+                                f"All {len(found)} .aaf file(s) found are already in the list.")
             return
+        folders = len({os.path.dirname(j.path) for j in new_jobs})
+        skipped = len(found) - len(new_jobs)
+        self._added_note = (f"Added {len(new_jobs)} AAF file(s) from {folders} folder(s)"
+                            + (f"; {skipped} already in the list" if skipped else ""))
+        self.status.setText(self._added_note + ".")
         self.jobs.extend(new_jobs)
         self._pending_inspect.extend(new_jobs)
         self._refresh_files()
@@ -500,7 +502,8 @@ class MainWindow(QMainWindow):
         if self._inspect_worker is not None or not self._pending_inspect:
             return
         batch, self._pending_inspect = self._pending_inspect, []
-        self.status.setText(f"Inspecting {len(batch)} file(s)…")
+        note, self._added_note = getattr(self, "_added_note", ""), ""
+        self.status.setText((note + " — " if note else "") + f"inspecting {len(batch)} file(s)…")
         worker = InspectWorker(batch)
         thread = QThread(self)
         worker.moveToThread(thread)

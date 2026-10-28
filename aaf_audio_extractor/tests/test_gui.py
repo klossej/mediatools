@@ -40,8 +40,9 @@ def test_main_window_batch_export(app, tmp_path, monkeypatch):
     shown = []
     monkeypatch.setattr(MainWindow, "_show_report", lambda self, result: shown.append(result))
 
-    for ep in (1, 2, 3):
-        build_aaf(tmp_path / f"{ep}.aaf",
+    for ep in (1, 2, 3):   # one subfolder per episode, as on the server
+        (tmp_path / f"50{ep}").mkdir()
+        build_aaf(tmp_path / f"50{ep}" / f"{ep}.aaf",
                   [Track(1, "", [Clip("x", 0, 25)]), Track(2, "", [Clip("y", 0, 25)]), Track(3, "", [Clip("z", 0, 25)])],
                   {k: Media(ramp(48000, i)) for i, k in enumerate("xyz")}, tc_start=900000 + ep)
     out = tmp_path / "out"
@@ -49,7 +50,8 @@ def test_main_window_batch_export(app, tmp_path, monkeypatch):
     w.out_edit.setText(str(out))
     w._on_settings_changed()
     w.add_paths([str(tmp_path)])
-    assert len(w.jobs) == 3
+    assert [j.filename for j in w.jobs] == ["1.aaf", "2.aaf", "3.aaf"]
+    assert "from 3 folder(s)" in w.status.text()
     assert _wait(app, lambda: w._inspect_worker is None and all(j.inspection for j in w.jobs))
 
     w.file_table.selectRow(0)
