@@ -1,6 +1,7 @@
 """Offscreen smoke test of the main window: load, map, export without blocking."""
 
 import time
+from pathlib import Path
 
 import pytest
 
@@ -111,7 +112,8 @@ def test_settings_are_an_ini_file_not_the_registry(app):
     w.suffix_edit.setText("_PRINTMASTER")
     w._on_settings_changed()
     w.qsettings.sync()
-    assert w.qsettings.fileName() == str(settings_file())
+    # Qt reports "C:/..." on Windows; compare as paths, not strings.
+    assert Path(w.qsettings.fileName()) == settings_file()
     assert "_PRINTMASTER" in settings_file().read_text()
     w.suffix_edit.setText("_MIX")
     w._on_settings_changed()
