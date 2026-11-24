@@ -64,7 +64,7 @@ async function saveToServer(page, selector, name) {
 }
 
 async function openFromServer(page, name) {
-  await page.locator("#open-server").click();
+  await page.getByRole("button", { name: "Open Script", exact: true }).click();
   await page.waitForFunction((name) => [...document.querySelector("#server-script").options]
     .some((option) => option.value === name), name);
   await page.locator("#server-script").selectOption(name);

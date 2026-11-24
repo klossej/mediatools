@@ -2,7 +2,7 @@
 
 ## Load and prepare a script
 
-1. The operator page opens the previous server script at its saved position. Choose **Open server** to select another saved script, **Import file** for a local UTF-8 `.md` or `.txt` file, or paste into the editor.
+1. The operator page opens the previous server script at its saved position. Choose **Open Script** to select another saved script, **Import file** for a local UTF-8 `.md` or `.txt` file, or paste into the editor.
 2. Put `*#` on its own line wherever a new cue should begin. **Insert cue** adds a marker at the selection or caret. Both displays show a blank line between cues and preserve ordinary paragraph breaks.
 3. Select text and use **B**, **I** or **U** to format it. **Save** writes to the server using the current filename. **Save As** saves a new server file under a different name. Both keep the formatting, presentation settings and reading position. Use **Download .md** for a portable copy or **Export .txt** for a plain manuscript with cue markers.
 4. Collapse **Script** when you need a larger preview.
@@ -17,7 +17,7 @@ Select **Find** or press **Ctrl+F** or **Command+F** while editing. **Enter** mo
 
 Use **−** and **+** to zoom the editor text from 70% to 200%. Select the percentage to reset to 100%. Presenter text size is set in **Display & speed**.
 
-If another operator saves a newer revision of the same file, use **Save As** to keep your work as a separate script or **Open server** to read the newer copy.
+If another operator saves a newer revision of the same file, use **Save As** to keep your work as a separate script or **Open Script** to read the newer copy.
 
 ## Put the presenter on air
 

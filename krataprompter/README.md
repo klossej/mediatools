@@ -21,7 +21,7 @@ Use `--port` to override 25252. The supplied server serves the app and its scrip
 
 ## Server script library
 
-**Save** and **Save As** write ordinary Markdown files to the server with their presentation settings, current reading position and version stamp. The header shows the last saved version of the open script. The operator page automatically opens the last script opened from or saved to the server and starts paused at its saved position. **Open server** lists all saved scripts. **Import file**, **Download .md** and **Export .txt** support local copies.
+**Save** and **Save As** write ordinary Markdown files to the server with their presentation settings, current reading position and version stamp. The header shows the last saved version of the open script. The operator page automatically opens the last script opened from or saved to the server and starts paused at its saved position. **Open Script** lists all saved scripts. **Import file**, **Download .md** and **Export .txt** support local copies.
 
 The server creates `.krataprompter-data/` at the repository root by default. Use `--data-dir /path/to/scripts` to select a different writable folder. The library and last-script record are shared by operators using that server. Run the service on the trusted production LAN, where anyone who can access the app can open and save scripts.
 
