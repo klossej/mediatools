@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#161618">
   <title>KråtaPrompter</title>
+  <link rel="icon" href="./icon.svg" type="image/svg+xml" sizes="any">
   <link rel="stylesheet" href="./style.css">
   <script type="module" src="./app.mjs"></script>
 </head>
@@ -18,7 +19,10 @@
         <output id="script-version" aria-label="Last saved version" title="Last saved version">Version —</output>
       </div>
     </div>
-    <button type="button" id="open-presenter" class="primary">Open presenter</button>
+    <div class="app-header-actions">
+      <button type="button" id="open-about" aria-haspopup="dialog">About</button>
+      <button type="button" id="open-presenter" class="primary">Open presenter</button>
+    </div>
   </header>
   <main class="workspace">
     <section class="panel editor-panel" id="editor-panel" aria-labelledby="script-heading">
@@ -138,7 +142,7 @@
       </div>
     </section>
   </main>
-  <dialog id="script-library" aria-labelledby="library-heading">
+  <dialog class="app-dialog" id="script-library" aria-labelledby="library-heading">
     <form id="library-form">
       <h2 id="library-heading">Server scripts</h2>
       <select id="server-script" size="6" aria-label="Script to open"></select>
@@ -147,6 +151,16 @@
         <button type="button" id="close-library">Cancel</button>
         <button type="submit" id="open-selection" class="primary" disabled>Open</button>
       </div>
+    </form>
+  </dialog>
+  <dialog class="app-dialog" id="about-dialog" aria-labelledby="about-heading">
+    <div class="about-identity">
+      <img src="./icon.svg" width="112" height="112" alt="">
+      <h2 id="about-heading">Kråta<span>Prompter</span></h2>
+      <p>Version 1.0</p>
+    </div>
+    <form method="dialog" class="dialog-actions">
+      <button type="submit" autofocus>Close</button>
     </form>
   </dialog>
 </body>

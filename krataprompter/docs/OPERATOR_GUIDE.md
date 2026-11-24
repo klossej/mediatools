@@ -11,6 +11,8 @@ Markdown files saved by KråtaPrompter reopen paused at the saved position. Scri
 
 Click the bold script name in the header to edit it. Press **Enter** to accept or **Escape** to cancel. Save stores the edited name with the script while keeping the existing server filename. The header shows the last successful save as **Version YY.MM.DD HH:MM** in the operator workstation’s local time.
 
+Select **About** in the header to see the KråtaPrompter application version.
+
 ## Find and zoom in the editor
 
 Select **Find** or press **Ctrl+F** or **Command+F** while editing. **Enter** moves to the next match and **Shift+Enter** moves to the previous one. **Escape** closes the panel and selects the current match in the manuscript.

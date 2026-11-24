@@ -159,6 +159,43 @@ test("operator panels use the locally bundled Inter and adapt to narrow viewport
   }
 });
 
+test("the favicon and About dialog share the same logo", async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 820 } });
+  try {
+    await page.goto(baseURL);
+    const favicon = page.locator('link[rel="icon"]');
+    const href = await favicon.getAttribute("href");
+    const asset = await page.request.get(new URL(href, baseURL).href);
+    assert.equal(asset.status(), 200);
+    assert.equal(asset.headers()["content-type"], "image/svg+xml");
+    const presenterPage = await page.request.get(baseURL + "/presenter.html");
+    assert.match(await presenterPage.text(), /rel="icon" href="\.\/icon\.svg"/u);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320);
+
+    await importFile(page, "about-check.txt", "Första raden.\n\nToinen rivi.\n\nSista raden.");
+    await waitText(page, "#cue-status", "Cue 1 / 1");
+    await page.locator("#play").click();
+    const trigger = page.getByRole("button", { name: "About", exact: true });
+    await trigger.click();
+    const dialog = page.getByRole("dialog", { name: "KråtaPrompter" });
+    const logo = dialog.locator("img");
+    assert.equal(await logo.getAttribute("src"), href);
+    assert.ok((await logo.boundingBox()).width >= 96);
+    assert.ok(await logo.evaluate((image) => image.complete && image.naturalWidth > 0));
+    assert.equal(await dialog.getByText("Version 1.0").isVisible(), true);
+
+    await page.keyboard.press("Escape");
+    assert.equal(await dialog.isVisible(), false);
+    assert.equal(await trigger.evaluate((element) => document.activeElement === element), true);
+    assert.equal(await page.locator("#playback-status").textContent(), "Playing");
+    await trigger.click();
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    assert.equal(await dialog.isVisible(), false);
+  } finally {
+    await page.close();
+  }
+});
+
 test("HTTP editor handles UTF-8, formatted Markdown, text downloads, paste and cue insertion", async () => {
   const page = await browser.newPage();
   const errors = [];

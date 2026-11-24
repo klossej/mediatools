@@ -21,6 +21,7 @@ const editorFollower = createEditorFollower(editor, () => !searchPanel.hidden);
 const nameInput = byId("script-name-input");
 const nameButton = byId("script-name");
 const library = byId("script-library");
+const about = byId("about-dialog");
 const serverScript = byId("server-script");
 const preview = createView(document.querySelector(".preview-stage"), true);
 const session = Array.from(crypto.getRandomValues(new Uint32Array(4)), (n) => n.toString(36)).join("-");
@@ -593,7 +594,7 @@ window.addEventListener("click", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
-  if (library.open) return;
+  if (library.open || about.open) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f" &&
       !byId("editor-body").hidden && (document.activeElement === editor || searchPanel.contains(event.target))) {
     event.preventDefault();
@@ -605,6 +606,8 @@ window.addEventListener("keydown", (event) => {
   event.preventDefault();
   if (action !== "play" || !event.repeat) command(action);
 });
+
+byId("open-about").addEventListener("click", () => about.showModal());
 
 function releasePresenter() {
   const now = clock();

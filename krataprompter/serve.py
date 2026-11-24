@@ -15,7 +15,7 @@ DEFAULT_DATA_DIRECTORY = APP_DIRECTORY.parent / ".krataprompter-data"
 DEVELOPMENT_DATA_DIRECTORY = APP_DIRECTORY.parent / ".krataprompter-dev-data"
 MAX_REQUEST_BYTES = MAX_SCRIPT_BYTES * 6 + 4096
 PUBLIC_FILES = frozenset({
-    "/", "/index.html", "/presenter.html", "/style.css", "/app.mjs", "/presenter.mjs",
+    "/", "/index.html", "/presenter.html", "/icon.svg", "/style.css", "/app.mjs", "/presenter.mjs",
     "/editor.mjs", "/script.mjs", "/script-file.mjs", "/presentation.mjs", "/transport.mjs",
     "/view.mjs", "/editor-follow.mjs", "/editor-search.mjs",
     "/fonts/inter-latin-variable.woff2", "/fonts/Inter-LICENSE.txt",
@@ -26,6 +26,7 @@ class AppHandler(SimpleHTTPRequestHandler):
     extensions_map = {
         **SimpleHTTPRequestHandler.extensions_map,
         ".mjs": "text/javascript",
+        ".svg": "image/svg+xml",
         ".woff2": "font/woff2",
     }
 
