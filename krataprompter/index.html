@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#161618">
+  <title>KråtaPrompter</title>
+  <link rel="stylesheet" href="./style.css">
+  <script type="module" src="./app.mjs"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="app-identity">
+      <h1>Kråta<span>Prompter</span></h1>
+      <div class="script-identity">
+        <button type="button" id="script-name" title="Edit script name">Untitled</button>
+        <input type="text" id="script-name-input" aria-label="Script name" maxlength="160" hidden>
+        <output id="script-version" aria-label="Last saved version" title="Last saved version">Version —</output>
+      </div>
+    </div>
+    <button type="button" id="open-presenter" class="primary">Open presenter</button>
+  </header>
+  <main class="workspace">
+    <section class="panel editor-panel" id="editor-panel" aria-labelledby="script-heading">
+      <div class="panel-header">
+        <h2 id="script-heading">Script</h2>
+        <button type="button" id="toggle-editor" aria-controls="editor-body" aria-expanded="true">Collapse</button>
+      </div>
+      <div class="editor-body" id="editor-body">
+        <div class="file-bar">
+          <button type="button" id="open-server">Open server</button>
+          <button type="button" id="open-script">Import file</button>
+          <button type="button" id="save-markdown" title="Save Markdown to the server">Save</button>
+          <button type="button" id="save-as" title="Save to the server with a new filename">Save As</button>
+          <button type="button" id="download-markdown">Download .md</button>
+          <button type="button" id="save-text">Export .txt</button>
+          <input type="file" id="script-file" accept=".md,.markdown,.txt,text/plain,text/markdown" hidden>
+        </div>
+        <div class="editor-toolbar">
+          <div class="format-bar" id="format-bar" role="group" aria-label="Script formatting">
+            <button type="button" data-format="bold" aria-label="Bold" aria-pressed="false"><b>B</b></button>
+            <button type="button" data-format="italic" aria-label="Italic" aria-pressed="false"><i>I</i></button>
+            <button type="button" data-format="underline" aria-label="Underline" aria-pressed="false"><u>U</u></button>
+            <button type="button" id="insert-cue">Insert cue</button>
+          </div>
+          <div class="editor-tools">
+            <button type="button" id="toggle-search" aria-controls="script-search" aria-expanded="false">Find</button>
+            <div class="zoom-controls" id="editor-zoom" role="group" aria-label="Editor zoom">
+              <button type="button" id="zoom-out" aria-label="Decrease editor text size">−</button>
+              <button type="button" id="zoom-reset" title="Reset editor zoom">100%</button>
+              <button type="button" id="zoom-in" aria-label="Increase editor text size">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="script-search" id="script-search" role="search" aria-label="Find in script" hidden>
+          <input type="search" id="find-query" aria-label="Find in script" placeholder="Find in script" maxlength="200">
+          <output id="find-count" aria-label="Match count"></output>
+          <button type="button" id="find-previous" aria-label="Previous match" disabled>Previous</button>
+          <button type="button" id="find-next" aria-label="Next match" disabled>Next</button>
+          <button type="button" id="find-close" aria-label="Close script search">Close</button>
+        </div>
+        <div id="script-editor" contenteditable="true" role="textbox" aria-label="Script editor"
+             aria-multiline="true" spellcheck="false" data-placeholder="Paste or type a script"></div>
+        <div class="editor-footer">
+          <span id="file-name">Untitled</span>
+          <span id="file-status" role="status"></span>
+        </div>
+      </div>
+    </section>
+    <section class="panel preview-panel" aria-labelledby="preview-heading">
+      <div class="panel-header">
+        <h2 id="preview-heading">Preview</h2>
+        <span id="playback-status" role="status">Ready</span>
+      </div>
+      <div class="preview-frame">
+        <div class="stage preview-stage" aria-label="Live prompter preview">
+          <div class="glass"><div class="sheet"></div></div>
+          <div class="reading-guide" aria-hidden="true"></div>
+        </div>
+        <p id="empty-preview">No script loaded</p>
+      </div>
+      <div class="transport" role="group" aria-label="Transport">
+        <button type="button" id="play" class="primary" title="Space">Play</button>
+        <button type="button" id="previous" title="Left arrow">Previous cue</button>
+        <output id="cue-status" aria-label="Current cue">Cue 0 / 0</output>
+        <button type="button" id="next" title="Right arrow">Next cue</button>
+        <button type="button" id="reset" title="Home">Reset</button>
+      </div>
+    </section>
+    <section class="panel settings" aria-labelledby="settings-heading">
+      <div class="panel-header">
+        <h2 id="settings-heading">Display &amp; speed</h2>
+        <span id="presenter-status" role="status">Presenter closed</span>
+      </div>
+      <div class="settings-body">
+        <div class="sliders">
+          <label for="fontSize"><span>Text size</span><output id="fontSize-value" for="fontSize"></output>
+            <input type="range" id="fontSize">
+          </label>
+          <label for="speed"><span>Scroll speed</span><output id="speed-value" for="speed"></output>
+            <input type="range" id="speed">
+          </label>
+          <label for="lineSpacing"><span>Line spacing</span><output id="lineSpacing-value" for="lineSpacing"></output>
+            <input type="range" id="lineSpacing">
+          </label>
+          <label for="paragraphSpacing"><span>Paragraph spacing</span><output id="paragraphSpacing-value" for="paragraphSpacing"></output>
+            <input type="range" id="paragraphSpacing">
+          </label>
+          <label for="width"><span>Text width</span><output id="width-value" for="width"></output>
+            <input type="range" id="width" title="Maximum width of the text column">
+          </label>
+          <label for="horizontalMargin"><span>Side margins</span><output id="horizontalMargin-value" for="horizontalMargin"></output>
+            <input type="range" id="horizontalMargin" title="Minimum inset on each side">
+          </label>
+          <label for="guidePosition"><span>Guide position</span><output id="guidePosition-value" for="guidePosition"></output>
+            <input type="range" id="guidePosition" title="Position from the top of the unmirrored display">
+          </label>
+          <label for="guideSize"><span>Guide arrow size</span><output id="guideSize-value" for="guideSize"></output>
+            <input type="range" id="guideSize" title="Height of the reading guide arrows at 1080p">
+          </label>
+        </div>
+        <div class="display-options">
+          <label>Font <select id="fontFamily"></select></label>
+          <label>Text alignment <select id="textAlign"></select></label>
+          <label>Text colour <input type="color" id="textColor"></label>
+          <label>Background colour <input type="color" id="backgroundColor"></label>
+        </div>
+        <div class="toggles">
+          <label><input type="checkbox" id="guide"> Reading guide</label>
+          <label><input type="checkbox" id="previewMirror"> Mirror preview horizontally</label>
+          <label><input type="checkbox" id="previewMirrorVertical"> Mirror preview vertically</label>
+          <label><input type="checkbox" id="presenterMirror"> Mirror presenter horizontally</label>
+          <label><input type="checkbox" id="presenterMirrorVertical"> Mirror presenter vertically</label>
+        </div>
+      </div>
+      <div class="settings-footer">
+        <button type="button" id="reset-presentation">Reset Presentation Settings</button>
+      </div>
+    </section>
+  </main>
+  <dialog id="script-library" aria-labelledby="library-heading">
+    <form id="library-form">
+      <h2 id="library-heading">Server scripts</h2>
+      <select id="server-script" size="6" aria-label="Script to open"></select>
+      <p id="library-status" role="status"></p>
+      <div class="dialog-actions">
+        <button type="button" id="close-library">Cancel</button>
+        <button type="submit" id="open-selection" class="primary" disabled>Open</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>

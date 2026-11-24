@@ -22,6 +22,7 @@ Current tools:
 | Folder | Summary |
 |---|---|
 | `aaf_audio_extractor/` | Avid AAF → stereo 48 kHz / 24-bit BWF with record timecode, batch GUI (PySide6, pyaaf2, numpy) |
+| `krataprompter/` | Web teleprompter with local script editing, cue navigation and fullscreen presenter |
 
 ## Working on a tool
 
@@ -72,6 +73,10 @@ On Windows, `install.bat` does the setup, runs the tests and builds
 
 - **Never commit AAF, MXF, WAV or other programme media.** The files are large
   (GitHub rejects files over 100 MB) and are broadcaster material.
+- **Preserve KråtaPrompter scripts during development.** Use `serve.py --dev`
+  for manual testing and a temporary data folder in automated tests. Keep the
+  live library and its `.revisions/` archive out of cleanup operations, including
+  Git cleanup of ignored files.
 - Real sample files for validation are kept on the development server outside
   the repository, for example `/home/<user>/LI_510.aaf`. Record the results of
   real-file validation in the tool's `docs/TESTING.md`, not the files themselves.
